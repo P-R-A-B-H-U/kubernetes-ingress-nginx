@@ -220,6 +220,7 @@ Takes the form "<host>:port". If not provided, no admission controller is starte
 		enableTopologyAwareRouting = flags.Bool("enable-topology-aware-routing", false, "Enable topology aware hints feature, needs service object annotation service.kubernetes.io/topology-aware-hints sets to auto.")
 	)
 
+	flags.StringVar(&nginx.MaxmindLicenseKeyFile, "maxmind-license-key-file", "", "File containing Maxmind license key.")
 	flags.StringVar(&nginx.MaxmindMirror, "maxmind-mirror", "", `Maxmind mirror url (example: http://geoip.local/databases.`)
 	flags.StringVar(&nginx.MaxmindLicenseKey, "maxmind-license-key", "", `Maxmind license key to download GeoLite2 Databases.
 https://blog.maxmind.com/2019/12/18/significant-changes-to-accessing-and-using-geolite2-databases .`)
@@ -376,12 +377,16 @@ https://blog.maxmind.com/2019/12/18/significant-changes-to-accessing-and-using-g
 		config.RootCAFile = *rootCAFile
 	}
 
+	if nginx.MaxmindLicenseKeyFile != "" && nginx.MaxmindLicenseKey != "" {
+		return false, nil, fmt.Errorf("flags --maxmind-license-key-file and --maxmind-license-key are mutually exclusive")
+	}
+
 	var err error
 	if nginx.MaxmindEditionIDs != "" {
 		if err = nginx.ValidateGeoLite2DBEditions(); err != nil {
 			return false, nil, err
 		}
-		if nginx.MaxmindLicenseKey != "" || nginx.MaxmindMirror != "" {
+		if nginx.MaxmindLicenseKey != "" || nginx.MaxmindLicenseKeyFile != "" || nginx.MaxmindMirror != "" {
 			klog.InfoS("downloading maxmind GeoIP2 databases")
 			if err = nginx.DownloadGeoLite2DB(nginx.MaxmindRetriesCount, nginx.MaxmindRetriesTimeout); err != nil {
 				klog.ErrorS(err, "unexpected error downloading GeoIP2 database")
