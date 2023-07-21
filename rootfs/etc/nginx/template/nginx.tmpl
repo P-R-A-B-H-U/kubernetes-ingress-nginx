@@ -1012,8 +1012,10 @@ stream {
         {{ else }}
 
         {{ if not (empty $server.CertificateAuth.CAFileName) }}
+        {{ if eq $server.CertificateAuth.SendClientCa "true"}}
         # PEM sha: {{ $server.CertificateAuth.CASHA }}
         ssl_client_certificate                  {{ $server.CertificateAuth.CAFileName }};
+        {{ end }}
         ssl_verify_client                       {{ $server.CertificateAuth.VerifyClient }};
         ssl_verify_depth                        {{ $server.CertificateAuth.ValidationDepth }};
 
