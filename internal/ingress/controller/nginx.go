@@ -35,7 +35,6 @@ import (
 	"text/template"
 	"time"
 
-	proxyproto "github.com/armon/go-proxyproto"
 	"github.com/eapache/channels"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -43,7 +42,6 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
-	"k8s.io/ingress-nginx/pkg/tcpproxy"
 
 	adm_controller "k8s.io/ingress-nginx/internal/admission/controller"
 	ngx_config "k8s.io/ingress-nginx/internal/ingress/controller/config"
@@ -102,8 +100,6 @@ func NewNGINXController(config *Configuration, mc metric.Collector) *NGINXContro
 		stopLock: &sync.Mutex{},
 
 		runningConfig: new(ingress.Configuration),
-
-		Proxy: &tcpproxy.TCPProxy{},
 
 		metricCollector: mc,
 
@@ -244,8 +240,6 @@ type NGINXController struct {
 
 	isShuttingDown bool
 
-	Proxy *tcpproxy.TCPProxy
-
 	store store.Storer
 
 	metricCollector metric.Collector
@@ -294,10 +288,6 @@ func (n *NGINXController) Start() {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 		Pgid:    0,
-	}
-
-	if n.cfg.EnableSSLPassthrough {
-		n.setupSSLProxy()
 	}
 
 	klog.InfoS("Starting NGINX process")
@@ -441,44 +431,6 @@ func (n *NGINXController) DefaultEndpoint() ingress.Endpoint {
 //
 //nolint:gocritic // the cfg shouldn't be changed, and shouldn't be mutated by other processes while being rendered.
 func (n *NGINXController) generateTemplate(cfg ngx_config.Configuration, ingressCfg ingress.Configuration) ([]byte, error) {
-	if n.cfg.EnableSSLPassthrough {
-		servers := []*tcpproxy.TCPServer{}
-		for _, pb := range ingressCfg.PassthroughBackends {
-			svc := pb.Service
-			if svc == nil {
-				klog.Warningf("Missing Service for SSL Passthrough backend %q", pb.Backend)
-				continue
-			}
-			port, err := strconv.Atoi(pb.Port.String()) // #nosec
-			if err != nil {
-				for _, sp := range svc.Spec.Ports {
-					if sp.Name == pb.Port.String() {
-						port = int(sp.Port)
-						break
-					}
-				}
-			} else {
-				for _, sp := range svc.Spec.Ports {
-					//nolint:gosec // Ignore G109 error
-					if sp.Port == int32(port) {
-						port = int(sp.Port)
-						break
-					}
-				}
-			}
-
-			// TODO: Allow PassthroughBackends to specify they support proxy-protocol
-			servers = append(servers, &tcpproxy.TCPServer{
-				Hostname:      pb.Hostname,
-				IP:            svc.Spec.ClusterIP,
-				Port:          port,
-				ProxyProtocol: false,
-			})
-		}
-
-		n.Proxy.ServerList = servers
-	}
-
 	// NGINX cannot resize the hash tables used to store server names. For
 	// this reason we check if the current size is correct for the host
 	// names defined in the Ingress rules and adjust the value if
@@ -761,56 +713,59 @@ func nextPowerOf2(v int) int {
 	return v
 }
 
-func (n *NGINXController) setupSSLProxy() {
-	cfg := n.store.GetBackendConfiguration()
-	sslPort := n.cfg.ListenPorts.HTTPS
-	proxyPort := n.cfg.ListenPorts.SSLProxy
-
-	klog.InfoS("Starting TLS proxy for SSL Passthrough")
-	n.Proxy = &tcpproxy.TCPProxy{
-		Default: &tcpproxy.TCPServer{
-			Hostname:      "localhost",
-			IP:            "127.0.0.1",
-			Port:          proxyPort,
-			ProxyProtocol: true,
-		},
+// TODO: Move to the right place
+type (
+	PassthroughConfig map[string]PassthrougBackend
+	PassthrougBackend struct {
+		Endpoint string `json:"endpoint,omitempty"`
 	}
+)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%v", sslPort))
-	if err != nil {
-		klog.Fatalf("%v", err)
-	}
+func configurePassthroughBackends(backends []*ingress.SSLPassthroughBackend) error {
+	configPassthrough := make(PassthroughConfig)
 
-	proxyList := &proxyproto.Listener{Listener: listener, ProxyHeaderTimeout: cfg.ProxyProtocolHeaderTimeout}
-
-	// accept TCP connections on the configured HTTPS port
-	go func() {
-		for {
-			var conn net.Conn
-			var err error
-
-			if n.store.GetBackendConfiguration().UseProxyProtocol {
-				// wrap the listener in order to decode Proxy
-				// Protocol before handling the connection
-				conn, err = proxyList.Accept()
-			} else {
-				conn, err = listener.Accept()
-			}
-
-			if err != nil {
-				klog.Warningf("Error accepting TCP connection: %v", err)
-				continue
-			}
-
-			klog.V(3).InfoS("Handling TCP connection", "remote", conn.RemoteAddr(), "local", conn.LocalAddr())
-			go n.Proxy.Handle(conn)
+	for _, pb := range backends {
+		svc := pb.Service
+		if svc == nil {
+			klog.Warningf("Missing Service for SSL Passthrough backend %q", pb.Backend)
+			continue
 		}
-	}()
+		port, err := strconv.Atoi(pb.Port.String()) // #nosec
+		if err != nil {
+			for _, sp := range svc.Spec.Ports {
+				if sp.Name == pb.Port.String() {
+					port = int(sp.Port)
+					break
+				}
+			}
+		} else {
+			for _, sp := range svc.Spec.Ports {
+				if sp.Port == int32(port) {
+					port = int(sp.Port)
+					break
+				}
+			}
+		}
+		configPassthrough[pb.Hostname] = PassthrougBackend{
+			Endpoint: net.JoinHostPort(svc.Spec.ClusterIP, fmt.Sprintf("%v", port)),
+		}
+	}
+	status, err := nginx.NewPassthroughConfigRequest(configPassthrough)
+	if err != nil || status != "OK" {
+		return fmt.Errorf("error configuring passthrough: %s %v", status, err)
+	}
+	return nil
 }
 
 // configureDynamically encodes new Backends in JSON format and POSTs the
 // payload to an internal HTTP endpoint handled by Lua.
 func (n *NGINXController) configureDynamically(pcfg *ingress.Configuration) error {
+	if n.cfg.EnableSSLPassthrough {
+		if err := configurePassthroughBackends(pcfg.PassthroughBackends); err != nil {
+			return err
+		}
+	}
+
 	backendsChanged := !reflect.DeepEqual(n.runningConfig.Backends, pcfg.Backends)
 	if backendsChanged {
 		err := configureBackends(pcfg.Backends)

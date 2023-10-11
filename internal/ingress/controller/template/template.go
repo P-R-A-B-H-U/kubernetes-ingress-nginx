@@ -286,6 +286,7 @@ var funcMap = text_template.FuncMap{
 	"shouldLoadAuthDigestModule":         shouldLoadAuthDigestModule,
 	"buildServerName":                    buildServerName,
 	"buildCorsOriginRegex":               buildCorsOriginRegex,
+	"buildSSLPassthroughListener":        buildSSLPassthroughListener,
 }
 
 // escapeLiteralDollar will replace the $ character with ${literal_dollar}
@@ -1533,6 +1534,15 @@ func httpListener(addresses []string, co string, tc *config.TemplateConfig) []st
 	return out
 }
 
+func buildSSLPassthroughListener(t interface{}) string {
+	tc, ok := t.(config.TemplateConfig)
+	if !ok {
+		klog.Errorf("expected a 'config.TemplateConfig' type but %T was returned", t)
+		return ""
+	}
+	return fmt.Sprintf("%v", tc.ListenPorts.HTTPS)
+}
+
 func httpsListener(addresses []string, co string, tc *config.TemplateConfig) []string {
 	out := make([]string, 0)
 	for _, address := range addresses {
@@ -1545,9 +1555,9 @@ func httpsListener(addresses []string, co string, tc *config.TemplateConfig) []s
 				lo = append(lo, fmt.Sprintf("%v:%v", address, tc.ListenPorts.SSLProxy))
 			}
 
-			if !strings.Contains(co, "proxy_protocol") {
+			/*if !strings.Contains(co, "proxy_protocol") {
 				lo = append(lo, "proxy_protocol")
-			}
+			}*/
 		} else {
 			if address == "" {
 				lo = append(lo, fmt.Sprintf("%v", tc.ListenPorts.HTTPS))

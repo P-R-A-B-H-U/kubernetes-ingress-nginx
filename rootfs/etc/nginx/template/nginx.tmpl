@@ -37,6 +37,8 @@ load_module /etc/nginx/modules/ngx_http_opentracing_module.so;
 load_module /modules_mount/etc/nginx/modules/otel/otel_ngx_module.so;
 {{ end }}
 
+load_module /etc/nginx/modules/ngx_stream_js_module.so;
+
 daemon off;
 
 worker_processes {{ $cfg.WorkerProcesses }};
@@ -514,17 +516,6 @@ http {
     {{ end }}
 
     upstream upstream_balancer {
-        ### Attention!!!
-        #
-        # We no longer create "upstream" section for every backend.
-        # Backends are handled dynamically using Lua. If you would like to debug
-        # and see what backends ingress-nginx has in its memory you can
-        # install our kubectl plugin https://kubernetes.github.io/ingress-nginx/kubectl-plugin.
-        # Once you have the plugin you can use "kubectl ingress-nginx backends" command to
-        # inspect current backends.
-        #
-        ###
-
         server 0.0.0.1; # placeholder
 
         balancer_by_lua_block {
@@ -762,6 +753,7 @@ http {
     }
 }
 
+ 
 stream {
     lua_package_path "/etc/nginx/lua/?.lua;/etc/nginx/lua/vendor/?.lua;;";
 
@@ -828,6 +820,42 @@ stream {
           tcp_udp_balancer.balance()
         }
     }
+
+    {{/* Begin of the new SSLPassthrough approach */}}
+
+    {{/* This is the configuration endpoint for dynamic passthrough
+     It should be made configurable before reaching GA
+     We want this server to be always running
+    */}}
+
+    js_import /etc/nginx/njs/passthrough.js;
+    js_shared_dict_zone zone=ptbackends:32m type=string;
+    
+    server {
+        listen 19090;
+        js_preread passthrough.configBackends;
+        js_set $cfgreturn passthrough.getConfigStatus;
+        return $cfgreturn;
+    }
+    {{ if and $all.IsSSLPassthroughEnabled }} 
+    # This server is here just for proxy protocol enabled passthroughs
+    server {
+        ssl_preread on;
+        listen unix:/var/run/nginx/streamproxy.sock;
+        js_set $proxyupstream passthrough.getProxiedBackend;
+        proxy_pass $proxyupstream;
+        proxy_protocol on;
+    }
+
+    server {
+        # TODO: Remove Hardcode
+        listen 443;
+        ssl_preread on;
+        js_set $ptupstream passthrough.getBackend;
+        proxy_pass $ptupstream;
+    }
+    {{ end }}
+    {{/* End of new SSLPassthrough approach */}}
 
     server {
         listen 127.0.0.1:{{ .StreamPort }};
