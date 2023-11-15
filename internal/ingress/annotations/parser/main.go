@@ -19,6 +19,7 @@ package parser
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -139,6 +140,29 @@ func (a ingAnnotations) parseInt(name string) (int, error) {
 	return 0, errors.ErrMissingAnnotations
 }
 
+func (a ingAnnotations) parseTimeout(name string) (string, error) {
+	val, ok := a[name]
+	if ok {
+		s := normalizeString(val)
+		if s == "" {
+			return "0", errors.NewInvalidAnnotationContent(name, val)
+		}
+
+		setUnits := regexp.MustCompile(`\d+s|ms$`)
+
+		if setUnits.MatchString(s) {
+			return s, nil
+		}
+
+		noUnits := regexp.MustCompile(`\d+$`)
+
+		if noUnits.MatchString(s) {
+			return fmt.Sprintf("%ss", s), nil
+		}
+	}
+	return "0", errors.ErrMissingAnnotations
+}
+
 func (a ingAnnotations) parseFloat32(name string) (float32, error) {
 	val, ok := a[name]
 	if ok {
@@ -177,6 +201,16 @@ func GetIntAnnotation(name string, ing *networking.Ingress, fields AnnotationFie
 		return 0, err
 	}
 	return ingAnnotations(ing.GetAnnotations()).parseInt(v)
+}
+
+// GetTimeoutAnnotation extracts a string from an Ingress annotation, special format 10s
+func GetTimeoutAnnotation(name string, ing *networking.Ingress, fields AnnotationFields) (string, error) {
+	v, err := checkAnnotation(name, ing, fields)
+	if err != nil {
+		return "", err
+	}
+
+	return ingAnnotations(ing.GetAnnotations()).parseTimeout(v)
 }
 
 // GetFloatAnnotation extracts a float32 from an Ingress annotation
