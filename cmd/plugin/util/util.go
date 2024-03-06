@@ -31,7 +31,7 @@ import (
 const (
 	DefaultIngressDeploymentName = "ingress-nginx-controller" //#nosec G101
 	DefaultIngressServiceName    = "ingress-nginx-controller" //#nosec G101
-	DefaultIngressContainerName  = "controller"
+	DefaultIngressContainerName  = ""
 )
 
 // IssuePrefix is the github url that we can append an issue number to to link to it
@@ -139,7 +139,14 @@ func AddSelectorFlag(cmd *cobra.Command) *string {
 // AddContainerFlag adds a --container flag to a cobra command
 func AddContainerFlag(cmd *cobra.Command) *string {
 	v := ""
-	cmd.Flags().StringVar(&v, "container", DefaultIngressContainerName, "The name of the ingress-nginx controller container")
+	cmd.Flags().StringVarP(&v, "container", "c", DefaultIngressContainerName, "The name of the ingress-nginx controller container")
+	return &v
+}
+
+// AddServiceFlag adds a --service flag to a cobra command
+func AddServiceFlag(cmd *cobra.Command) *string {
+	v := ""
+	cmd.Flags().StringVar(&v, "service", DefaultIngressServiceName, "The name of the ingress-nginx service")
 	return &v
 }
 
