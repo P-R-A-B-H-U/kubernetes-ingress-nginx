@@ -94,6 +94,7 @@ export LUA_RESTY_CORE=0.1.27
 
 # Check for recent changes: https://github.com/utix/lua-resty-cookie/compare/9533f47...master
 export LUA_RESTY_COOKIE_VERSION=9533f479371663107b515590fc9daf00d61ebf11
+# TODO avif: wait for https://github.com/utix/lua-resty-cookie/issues/2 support
 
 # Check for recent changes: https://github.com/openresty/lua-resty-dns/compare/v0.22...master
 export LUA_RESTY_DNS=0.22
@@ -287,6 +288,7 @@ get_src a77b9de160d81712f2f442e1de8b78a5a7ef0d08f13430ff619f79235db974d4 \
 
 get_src a404c790553617424d743b82a9f01feccd0d2930b306b370c665ca3b7c09ccb6 \
         "https://github.com/utix/lua-resty-cookie/archive/$LUA_RESTY_COOKIE_VERSION.tar.gz"
+# TODO avif: wait for https://github.com/utix/lua-resty-cookie/issues/2 support
 
 get_src 573184006b98ccee2594b0d134fa4d05e5d2afd5141cbad315051ccf7e9b6403 \
         "https://github.com/openresty/lua-resty-lrucache/archive/v$LUA_RESTY_CACHE.tar.gz"

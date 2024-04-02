@@ -99,6 +99,8 @@ function _M.set_cookie(self, value)
     httponly = true,
     samesite = cookie_samesite,
     secure = cookie_secure,
+--     TODO avif: wait for https://github.com/utix/lua-resty-cookie/issues/2 support
+    partitioned = self.cookie_session_affinity.partitioned,
   }
 
   if self.cookie_session_affinity.expires and self.cookie_session_affinity.expires ~= "" then
