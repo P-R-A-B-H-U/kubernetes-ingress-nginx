@@ -253,9 +253,8 @@ func (n *NGINXController) syncIngress(interface{}) error {
 	}
 
 	ri := utilingress.GetRemovedIngresses(n.runningConfig, pcfg)
-	re := utilingress.GetRemovedHosts(n.runningConfig, pcfg)
 	rc := utilingress.GetRemovedCertificateSerialNumbers(n.runningConfig, pcfg)
-	n.metricCollector.RemoveMetrics(ri, re, rc)
+	n.metricCollector.RemoveMetrics(ri, rc)
 
 	n.runningConfig = pcfg
 
@@ -1506,6 +1505,7 @@ func (n *NGINXController) createServers(data []*ingress.Ingress,
 func locationApplyAnnotations(loc *ingress.Location, anns *annotations.Ingress) {
 	loc.BasicDigestAuth = anns.BasicDigestAuth
 	loc.ClientBodyBufferSize = anns.ClientBodyBufferSize
+	loc.CustomHeaders = anns.CustomHeaders
 	loc.ConfigurationSnippet = anns.ConfigurationSnippet
 	loc.CorsConfig = anns.CorsConfig
 	loc.ExternalAuth = anns.ExternalAuth
