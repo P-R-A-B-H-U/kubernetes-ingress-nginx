@@ -92,8 +92,8 @@ export LUA_RESTY_CACHE=0.13
 # Check for recent changes: https://github.com/openresty/lua-resty-core/compare/v0.1.27...master
 export LUA_RESTY_CORE=0.1.27
 
-# Check for recent changes: https://github.com/utix/lua-resty-cookie/compare/12136f5...master
-export LUA_RESTY_COOKIE_VERSION=12136f546ec4222e198c2d7c73dd83fc3539df32
+# Check for recent changes: https://github.com/utix/lua-resty-cookie/compare/v0.3.0...master
+export LUA_RESTY_COOKIE_VERSION=v0.3.0
 
 # Check for recent changes: https://github.com/openresty/lua-resty-dns/compare/v0.22...master
 export LUA_RESTY_DNS=0.22
